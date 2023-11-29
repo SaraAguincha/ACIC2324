@@ -8,7 +8,7 @@ unsigned long time_now = 0;
 
 void setup() {
   // LEDs initialization
-  for (int i = 0; i < sizeof(LEDs); i++) {
+  for (int i = 0; i < sizeof(LEDs) / sizeof(LEDs[0]); i++) {
     pinMode(LEDs[i], OUTPUT);
   }
   // Button initializion
@@ -19,21 +19,20 @@ void setup() {
 
 void loop() {
   // Cycle of 4 seconds (LEDs)
-  for (int i = 0; i < sizeof(LEDs); i++) { // Iterate through LEDs
+  for (int i = 0; i < sizeof(LEDs) / sizeof(LEDs[0]); i++) { // Iterate through LEDs
     digitalWrite(LEDs[i], HIGH); // Turn on LED
     time_now = millis();
     // delays for 1 second
     while(millis() < time_now + second){
       while (isFrozen) { // Check pause flag
-        delay(10); // Delay to avoid excessive CPU 
       }
     }    
     digitalWrite(LEDs[i], LOW); // Turn off LED
   }
+  time_now = millis();
   // Last second of the 5 second cycle
   while(millis() < time_now + second){
       while (isFrozen) { // Check pause flag
-        delay(10); // Delay to avoid excessive CPU 
       }
   }
 }
