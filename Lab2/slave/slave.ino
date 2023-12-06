@@ -18,17 +18,7 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-  time_now = millis();
-
-  //Serial.println(time_now);
-
-  digitalWrite(bluePin, HIGH);
-  while(millis() < time_now + mappedFrequency){
-  }
-  digitalWrite(bluePin, LOW);
-  time_now = millis();
-  while(millis() < time_now + mappedFrequency){
-  }
+  blinkLoop();
 }
 
 // function that executes whenever data is received from master
@@ -56,9 +46,9 @@ void receiveEvent(int howMany)
       lightActuator(x);
       break;
     case 'P':
-      //Serial.print("Potentiometer is ");
+      //Serial.print("blink is ");
       //Serial.println(x);
-      potentiometerActuator(x);
+      blinkActuator(x);
       break;
   }
 }
@@ -66,20 +56,29 @@ void receiveEvent(int howMany)
 void tempActuator(int temp)
 {
   if (temp > 10)
-  {
     digitalWrite(redPin, HIGH);
-  }
   else
-  {
     digitalWrite(redPin, LOW);
-  }
 }
 
-void potentiometerActuator(int frequency)
+void blinkActuator(int frequency)
 {
   mappedFrequency = map(frequency, 0, 180, 200, 2000);
+}
 
-  //Serial.println(mappedFrequency);
+void blinkLoop()
+{
+  time_now = millis();
+
+  //Serial.println(time_now);
+
+  digitalWrite(bluePin, HIGH);
+  while(millis() < time_now + mappedFrequency){
+  }
+  digitalWrite(bluePin, LOW);
+  time_now = millis();
+  while(millis() < time_now + mappedFrequency){
+  }
 }
 
 void lightActuator(int intensity)

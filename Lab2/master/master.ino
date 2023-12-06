@@ -1,20 +1,32 @@
 #include <Wire.h>
 
-int potentiometerSensor = 0;
-int potentiometerMapped = 0;
-int potentiometerPin = A3;
+int delaySensor = 0;
+int delayMapped = 0;
+int delayPin = A2;
+unsigned int delayTime = 0;
+unsigned int delayRate = 200;
 
-
-int lightSensor = 0;
-int lightMapped = 0;
-int lightPin = A1;
-
-int lightMin = 0;
-int lightMax = 1023;
+int blinkSensor = 0;
+int blinkMapped = 0;
+int blinkPin = A3;
+unsigned int blinkTime = 0;
+unsigned int blinkRate = 200;
 
 int tempSensor = 0;
 int tempMapped = 0;
 int tempPin = A0;
+unsigned int tempTime = 0;
+unsigned int tempRate = 1000;
+
+int lightSensor = 0;
+int lightMapped = 0;
+int lightPin = A1;
+unsigned int lightTime = 0;
+
+unsigned int lightRate = 10;
+
+int lightMin = 20;
+int lightMax = 700;
 
 void setup() {
   // put your setup code here, to run once:
@@ -22,30 +34,49 @@ void setup() {
   Wire.begin();
   pinMode(tempPin, INPUT);
   pinMode(lightPin, INPUT);
-  pinMode(potentiometerPin, INPUT);
+  pinMode(blinkPin, INPUT);
 }
 
 
 void loop() {
   // put your main code here, to run repeatedly:
+  sendBlink();
+  sendLight();
+  sendTemp();
+}
+
+void sendBlink()
+{
+  if (millis() < blinkTime + blinkRate)
+    return;
+  blinkTime = millis();
+  // blink section
   Wire.beginTransmission(4); // transmit to device #4
-  
-  // Potentiometer section
   Wire.write("P");        // sends five bytes
-  potentiometerSensor = analogRead(potentiometerPin);
-  potentiometerMapped = map(potentiometerSensor, 0, 1023, 0, 180);
-  Wire.write(potentiometerMapped);// sends one byte 
+  blinkSensor = analogRead(blinkPin);
+  blinkMapped = map(blinkSensor, 0, 1023, 0, 180);
+  Wire.write(blinkMapped);// sends one byte 
   Wire.endTransmission();    // stop transmitting
+}
 
+void sendLight()
+{
+  if (millis() < lightTime + lightRate)
+    return;
+  lightTime = millis();
   Wire.beginTransmission(4);
-
   Wire.write("L");
   lightSensor = analogRead(lightPin);
   lightMapped = map(lightSensor, lightMin, lightMax, 0, 255);
-  Wire.write(lightMapped);// sends one byte 
-  //Serial.println(lightSensor);
-  Wire.endTransmission();    // stop transmitting
+  Wire.write(lightMapped);
+  Wire.endTransmission();
+}
 
+void sendTemp()
+{
+  if (millis() < tempTime + tempRate)
+    return;
+  tempTime = millis();
   Wire.beginTransmission(4);
   Wire.write("T");
   tempSensor = analogRead(tempPin);
@@ -53,6 +84,4 @@ void loop() {
   Wire.write(tempMapped);// sends one byte
 
   Wire.endTransmission();    // stop transmitting
-
-  //delay(1000);
 }
