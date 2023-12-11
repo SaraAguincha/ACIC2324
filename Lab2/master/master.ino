@@ -22,11 +22,10 @@ int lightSensor = 0;
 int lightMapped = 0;
 int lightPin = A1;
 unsigned int lightTime = 0;
+unsigned int lightRate = 200;
 
-unsigned int lightRate = 10;
-
-int lightMin = 20;
-int lightMax = 700;
+int lightMin = 1;
+int lightMax = 900;
 
 void setup() {
   // put your setup code here, to run once:
@@ -67,6 +66,7 @@ void sendLight()
   Wire.beginTransmission(4);
   Wire.write("L");
   lightSensor = analogRead(lightPin);
+  Serial.println(lightSensor);
   lightMapped = map(lightSensor, lightMin, lightMax, 0, 255);
   Wire.write(lightMapped);
   Wire.endTransmission();
