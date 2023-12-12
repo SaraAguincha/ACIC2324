@@ -6,18 +6,20 @@ int yellowPin = 5;
 unsigned long time_now = 0;
 int mappedFrequency = 0;
 
+// Value of temperature that triggers the red LED actuator
+int temperatureTrigger = 18;
+
 void setup() {
-  // put your setup code here, to run once:
-  Wire.begin(4);                // join i2c bus with address #4
-  Wire.onReceive(receiveEvent); // register event
-  Serial.begin(9600);           // start serial for output
+  Serial.begin(9600);
+  // join i2c bus with address #4
+  Wire.begin(4);
+  Wire.onReceive(receiveEvent);
   pinMode(redPin, OUTPUT);
   pinMode(bluePin, OUTPUT);
   pinMode(yellowPin, OUTPUT);
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
   blinkLoop();
 }
 
@@ -26,28 +28,28 @@ void loop() {
 void receiveEvent(int howMany)
 {
   char c = ' ';
-  while(1 < Wire.available()) // loop through all but the last
+  // loop through all but the last
+  while(1 < Wire.available()) 
   {
-    c = Wire.read(); // receive byte as a character
-    //Serial.print(c);         // print the character
+    // receive byte as a character
+    c = Wire.read(); 
   }
-  int x = Wire.read();    // receive byte as an integer
-  //Serial.println(x);         // print the integer
+  // receive last byte as an integer
+  int x = Wire.read();    
 
-  switch (c){
+  // Round robin with interrupts
+  switch (c)
+  {
+    // Every temperature message starts with "T"
     case 'T':
-      //Serial.print("Temperature is ");
-      //Serial.println(x);
       tempActuator(x);
       break;
+    // Every light sensor message starts with "L"
     case 'L':
-      //Serial.print("Light is ");
-      //Serial.println(x);
       lightActuator(x);
       break;
     case 'P':
-      //Serial.print("blink is ");
-      //Serial.println(x);
+    // Every blink message starts with "P"
       blinkActuator(x);
       break;
   }
@@ -55,33 +57,37 @@ void receiveEvent(int howMany)
 
 void tempActuator(int temp)
 {
-  if (temp > 10)
+  if (temp > temperatureTrigger)
     digitalWrite(redPin, HIGH);
   else
     digitalWrite(redPin, LOW);
 }
 
+// Updates the frequency in which the actuator should blink
 void blinkActuator(int frequency)
 {
   mappedFrequency = map(frequency, 0, 180, 200, 2000);
 }
 
+// Loop that makes the actuator blink
 void blinkLoop()
 {
   time_now = millis();
-
-  //Serial.println(time_now);
-
   digitalWrite(bluePin, HIGH);
-  while(millis() < time_now + mappedFrequency){
+  while(millis() < time_now + mappedFrequency)
+  {
+    // empty on purpose
   }
   digitalWrite(bluePin, LOW);
   time_now = millis();
-  while(millis() < time_now + mappedFrequency){
+  while(millis() < time_now + mappedFrequency)
+  {
+    // empty on purpose
   }
 }
 
 void lightActuator(int intensity)
 {
+  // Inversely proportional to the the value of the sensor
   analogWrite(yellowPin, 255 - intensity);
 }
