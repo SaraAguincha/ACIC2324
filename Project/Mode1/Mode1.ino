@@ -10,7 +10,9 @@ const int firstJunctionSouth[] = {8, 10, 9};
 long unsigned int time_now;
 long unsigned int timeZero;
 long unsigned int period = 10000;
-bool changeFirst = true;
+float dutyCycle = 0.5;
+bool changeFirst = false;
+bool isChanging = false;
 
 // Section related with the light sensors
 int firstLightWest = A0;
@@ -24,29 +26,44 @@ int firstLightSouthMapped = 0;
 // Minimum and maximum values for the light
 // Value Max corresponds to the sensor value when close to a ceiling lamp
 // Value Min corresponds to the sensor value when completely covered
-int lightMin = 10;
-int lightMax = 400;
+int lightMin = 0;
+int lightMax = 300;
+
+// Cars related
+int carW = 0;
+int carS = 0;
+bool carInW = false;
+bool carInS = false;
 
 void setup() {
   for (int i = 0; i < sizeof(firstJunctionLEDs) / sizeof(firstJunctionLEDs[0]); i++) {
     pinMode(firstJunctionLEDs[i], OUTPUT);
-    //digitalWrite(firstJunctionLEDs[i], HIGH);
   }
-  initialState();
+  //initialState();
   pinMode(firstLightWest, INPUT);
   pinMode(firstLightSouth, INPUT);
   Serial.begin(9600);
+  timeZero = millis();
 }
 
 
 void loop() {
-  handleChange();
-  timeZero = millis();
-  while (millis() < timeZero + (period/2) - 1000 ) {}
-  handleYellow();
-  while (millis() < timeZero + (period/2)) {}
+  readCars();
+  if ((millis() > timeZero + (period * dutyCycle) - 1000) && !isChanging) {
+    handleYellow();
+    isChanging = !isChanging;
+  }
+  if (millis() > timeZero + (period * (1 - dutyCycle)) && isChanging) {
+    handleChange();
+    timeZero = millis();
+    isChanging = !isChanging;
+    calculateDutyCycle();
+    carW = 0;
+    carS = 0;
+  }
 }
 
+// TODO, initialize the RED and GREEN light according to the flag
 void initialState () {
   int counter = 0;
   while (counter < 3) {
@@ -96,4 +113,45 @@ void handleChange(){
     digitalWrite(firstJunctionWest[2], HIGH);
     digitalWrite(firstJunctionSouth[0], HIGH);
   }
+}
+
+
+void readCars(){
+  firstLightWestValue = analogRead(firstLightWest);
+  firstLightSouthValue = analogRead(firstLightSouth);
+  firstLightWestMapped = map(firstLightWestValue, lightMin, lightMax, 0, 255);
+  firstLightSouthMapped = map(firstLightSouthValue, lightMin, lightMax, 0, 255);
+
+  if (firstLightWestMapped < 50 && !carInW) {
+    carW ++;
+    carInW = true;
+  }
+  else if (firstLightWestMapped >= lightMax/2)
+    carInW = false;
+
+  if (firstLightSouthMapped < 50 && !carInS) {
+    carS ++;
+    carInS = true;
+  }
+  else if (firstLightSouthMapped >= lightMax/2)
+    carInS = false;
+}
+
+void calculateDutyCycle() {
+  //  Duty_cycle_S = cars_S / (cars_S + cars_W)
+  //  Duty_cycle_W = cars_W / (cars_S + cars_W)
+  //  5/20 = 25% ≤ Duty cycle ≤ 15/20 = 75%
+  if (carS == 0 && carW == 0)
+    return;
+
+  if (carS == 0) {
+    dutyCycle = 0.75;
+    return;
+  }
+
+  if (carW == 0) {
+    dutyCycle = 0.25;
+    return;
+  }
+  dutyCycle = carW / (carS + carW);
 }
