@@ -25,7 +25,7 @@ int firstLightSouthMapped = 0;
 // Value Max corresponds to the sensor value when close to a ceiling lamp
 // Value Min corresponds to the sensor value when completely covered
 int lightMin = 10;
-int lightMax = 400;
+int lightMax = 400; 
 
 void setup() {
   for (int i = 0; i < sizeof(firstJunctionLEDs) / sizeof(firstJunctionLEDs[0]); i++) {

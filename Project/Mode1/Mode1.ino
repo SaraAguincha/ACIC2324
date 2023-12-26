@@ -49,17 +49,44 @@ void setup() {
 
 void loop() {
   readCars();
-  if ((millis() > timeZero + (period * dutyCycle) - 1000) && !isChanging) {
-    handleYellow();
-    isChanging = !isChanging;
-  }
-  if (millis() > timeZero + (period * (1 - dutyCycle)) && isChanging) {
-    handleChange();
-    timeZero = millis();
-    isChanging = !isChanging;
-    calculateDutyCycle();
-    carW = 0;
-    carS = 0;
+  //Serial.println(dutyCycle);
+  //dutyCycle = 0.25;
+  if ((millis() > timeZero + (period * dutyCycle) - 1000)) 
+  {
+    if (millis() > timeZero + (period * dutyCycle))
+    {
+      if (millis() > timeZero + period - 1000)
+      {
+        if (millis() > timeZero + period)
+        {
+          handleChange();
+          timeZero = millis();
+          Serial.println(carW);
+          Serial.println(carS);
+          calculateDutyCycle();
+          Serial.print("Duty cycle after: ");
+          Serial.println(dutyCycle);
+          carW = 0;
+          carS = 0;
+          isChanging = false;
+        }
+        else if (!isChanging)
+        {
+          isChanging = !isChanging;
+          handleYellow();
+        }
+      }
+      else if (isChanging)
+      {
+        isChanging = !isChanging;
+        handleChange();
+      }
+    }
+    else if (!isChanging)
+    {
+      isChanging = !isChanging;
+      handleYellow();
+    }
   }
 }
 
@@ -119,21 +146,21 @@ void handleChange(){
 void readCars(){
   firstLightWestValue = analogRead(firstLightWest);
   firstLightSouthValue = analogRead(firstLightSouth);
-  firstLightWestMapped = map(firstLightWestValue, lightMin, lightMax, 0, 255);
-  firstLightSouthMapped = map(firstLightSouthValue, lightMin, lightMax, 0, 255);
+  firstLightWestMapped = map(firstLightWestValue, 45, 300, 0, 255);
+  firstLightSouthMapped = map(firstLightSouthValue, 30, 300, 0, 255);
 
   if (firstLightWestMapped < 50 && !carInW) {
     carW ++;
     carInW = true;
   }
-  else if (firstLightWestMapped >= lightMax/2)
+  else if (firstLightWestMapped >= 200/2)
     carInW = false;
 
   if (firstLightSouthMapped < 50 && !carInS) {
     carS ++;
     carInS = true;
   }
-  else if (firstLightSouthMapped >= lightMax/2)
+  else if (firstLightSouthMapped >= 300/3)
     carInS = false;
 }
 
@@ -142,16 +169,23 @@ void calculateDutyCycle() {
   //  Duty_cycle_W = cars_W / (cars_S + cars_W)
   //  5/20 = 25% ≤ Duty cycle ≤ 15/20 = 75%
   if (carS == 0 && carW == 0)
+  { 
+    dutyCycle = 0.50;
     return;
+  }
 
-  if (carS == 0) {
+  dutyCycle = (float) carS / ( (float) carS + (float) carW);
+
+  //Serial.print("Duty cycle before: ");
+  //Serial.println(dutyCycle);
+
+  if (dutyCycle > 0.75)
+  {
     dutyCycle = 0.75;
-    return;
   }
 
-  if (carW == 0) {
+  if (dutyCycle < 0.25)
+  {
     dutyCycle = 0.25;
-    return;
   }
-  dutyCycle = carW / (carS + carW);
 }
