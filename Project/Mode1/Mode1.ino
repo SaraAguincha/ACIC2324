@@ -15,6 +15,8 @@ bool isChanging[] = {false, false};
 const int light[2][2] = {{A0, A1}, {A2, A3}};
 int lightValue[2][2] = {{0, 0},{0, 0}};
 int lightMapped[2][2] = {{0, 0}, {0, 0}};
+int lightMin[2][2] = {{1023, 1023}, {1023, 1023}};
+int lightMax[2][2] = {{0, 0}, {0, 0}};
 
 // Cars related
 // First is West, then South
@@ -40,10 +42,10 @@ void setup() {
       pinMode(light[i][j], INPUT);
     }
   }
-
-  //initialState();
   Serial.begin(9600);
+  initialState();
   timeZero[0] = millis();
+  timeZero[1] = millis();
 }
 
 
@@ -106,25 +108,48 @@ void loop()
 // TODO, initialize the RED and GREEN light according to the flag
 void initialState () {
   int counter = 0;
+  long unsigned int init_time = 0;
   //const int junctionLEDs[2][2][3] = {{{13, 12, 11}, {8, 10, 9}}, {{7, 6, 5}, {2, 4, 3}}};
+  bool blink = true;
+  init_time = millis();
+  while (counter < 6) {
 
-  while (counter < 3) {
-    digitalWrite(10, HIGH);
-    digitalWrite(12, HIGH);
-    time_now[0] = millis();
-    while(millis() < time_now[0] + 1000)
+    lightCalibration();
+
+    if(millis() > init_time + 1000)
     {
-      // empty
+      // Yellow lights
+      for (int i = 0; i < 2; i++)
+      {
+        digitalWrite(junctionLEDs[i][0][1], blink ? HIGH : LOW);
+        digitalWrite(junctionLEDs[i][1][1], blink ? HIGH : LOW);
+      }
+      counter++;
+      init_time = millis();
+      blink = !blink;
     }
-    digitalWrite(10, LOW);
-    digitalWrite(12, LOW);
-    time_now[0] = millis();
-    while(millis() < time_now[0] + 1000)
-    {
-      // empty
-    }
-    counter++;
   }
+
+
+  for (int i = 0; i < 2; i++) 
+  {
+    for (int j = 0; j < 2; j++) 
+    {
+      Serial.print("In junction ");
+      Serial.print(i);
+      Serial.print(" MinLight: ");
+      Serial.print(lightMin[i][j]);
+      Serial.print("\n");
+      Serial.print(" MaxLight: ");
+      Serial.print(lightMax[i][j]);
+      Serial.print("\n");      
+    }
+  }
+
+
+  // TODO, maybe elsewhere
+  handleChange(0);
+  handleChange(1);
 }
 
 void handleYellow(int junction) {
@@ -165,38 +190,43 @@ void readCars(){
     for (int j = 0; j < 2; j++) 
     {
       lightValue[i][j] = analogRead(light[i][j]);
+      lightMapped[i][j] = map(lightValue[i][j], max(lightMin[i][j] - 20, 0), min(lightMax[i][j] + 20, 1023), 0, 255);
     }
   }
 
-  // TODO add the calibration to initialState
-  lightMapped[0][0] = map(lightValue[0][0], 45, 300, 0, 255);
-  lightMapped[0][1] = map(lightValue[0][1], 20, 200, 0, 255);
-  lightMapped[1][0] = map(lightValue[1][0], 45, 300, 0, 255);
-  lightMapped[1][1] = map(lightValue[1][1], 45, 300, 0, 255);
+  for (int i = 0; i < 2; i++) 
+  {
+    for (int j = 0; j < 2; j++) 
+    {
+      Serial.print("In junction ");
+      Serial.print(i);
+      Serial.print(" LightMapped: ");
+      Serial.println(lightMapped[i][j]);   
+    }
+  }
 
   for (int i = 0; i < 2; i++) 
   {
-    if (lightMapped[i][0] < 50 && !carInJunction[i][0]) 
+    if ((lightMapped[i][0] < 140) && !carInJunction[i][0]) 
     {
       cars[i][0]++;
       carInJunction[i][0] = true;
     }
-    else if (lightMapped[i][0] >= 200/2)
+    else if (lightMapped[i][0] >= 180)
       carInJunction[i][0] = false;
 
-    if (lightMapped[i][1] < 50 && !carInJunction[i][1]) 
+    if ((lightMapped[i][1] < 140) && !carInJunction[i][1]) 
     {
       cars[i][1]++;
       carInJunction[i][1] = true;
     }
-    else if (lightMapped[i][1] >= 300/3)
+    else if (lightMapped[i][1] >= 180)
       carInJunction[i][1] = false;
   }
 }
 
-void calculateDutyCycle(int junction) {
-  //  Duty_cycle_S = cars_S / (cars_S + cars_W)
-  //  Duty_cycle_W = cars_W / (cars_S + cars_W)
+void calculateDutyCycle(int junction) 
+{
   //  5/20 = 25% ≤ Duty cycle ≤ 15/20 = 75%
   if (cars[junction][0] == 0 && cars[junction][1] == 0)
   { 
@@ -214,5 +244,22 @@ void calculateDutyCycle(int junction) {
   if (dutyCycle[junction] < 0.25)
   {
     dutyCycle[junction] = 0.25;
+  }
+}
+
+void lightCalibration() 
+{
+  for (int i = 0; i < 2; i++) 
+  {
+    for (int j = 0; j < 2; j++) 
+    {
+      lightValue[i][j] = analogRead(light[i][j]);
+
+      if (lightValue[i][j] < lightMin[i][j])
+        lightMin[i][j] = lightValue[i][j];
+      
+      if (lightValue[i][j] > lightMax[i][j])
+        lightMax[i][j] = lightValue[i][j];
+    }
   }
 }
