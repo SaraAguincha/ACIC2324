@@ -1,91 +1,104 @@
 #include <Wire.h>
 
 // Initialization
-const int firstJunctionLEDs[] = {13, 12, 11, 9, 10, 8};
+const int junctionLEDs[2][2][3] = {{{13, 12, 11}, {8, 10, 9}}, {{7, 6, 5}, {2, 4, 3}}};
 
-
-const int firstJunctionWest[] = {13, 12, 11};
-const int firstJunctionSouth[] = {8, 10, 9};
-
-long unsigned int time_now;
-long unsigned int timeZero;
+// Time stuff
+long unsigned int time_now[] = {0, 0};
+long unsigned int timeZero[] = {0, 0};
 long unsigned int period = 10000;
-float dutyCycle = 0.5;
-bool changeFirst = false;
-bool isChanging = false;
+float dutyCycle[] = {0.5, 0.5};
+bool changeFirst[] = {true, true};
+bool isChanging[] = {false, false};
 
 // Section related with the light sensors
-int firstLightWest = A0;
-int firstLightSouth = A1;
-int firstLightWestValue = 0;
-int firstLightSouthValue = 0;
-int firstLightWestMapped = 0;
-int firstLightSouthMapped = 0;
-
-
-// Minimum and maximum values for the light
-// Value Max corresponds to the sensor value when close to a ceiling lamp
-// Value Min corresponds to the sensor value when completely covered
-int lightMin = 0;
-int lightMax = 300;
+const int light[2][2] = {{A0, A1}, {A2, A3}};
+int lightValue[2][2] = {{0, 0},{0, 0}};
+int lightMapped[2][2] = {{0, 0}, {0, 0}};
 
 // Cars related
-int carW = 0;
-int carS = 0;
-bool carInW = false;
-bool carInS = false;
+// First is West, then South
+int cars[2][2] = {{0, 0}, {0, 0}};
+bool carInJunction[2][2] = {{false, false}, {false, false}};
+
 
 void setup() {
-  for (int i = 0; i < sizeof(firstJunctionLEDs) / sizeof(firstJunctionLEDs[0]); i++) {
-    pinMode(firstJunctionLEDs[i], OUTPUT);
+  for (int i = 0; i < 2; i++) 
+  {
+    for (int j = 0; j < 2; j++) 
+    {
+      for (int k = 0; k < 3; k++) 
+      {
+        pinMode(junctionLEDs[i][j][k], OUTPUT);
+      }
+    }
   }
+  for (int i = 0; i < 2; i++) 
+  {
+    for (int j = 0; j < 2; j++) 
+    {
+      pinMode(light[i][j], INPUT);
+    }
+  }
+
   //initialState();
-  pinMode(firstLightWest, INPUT);
-  pinMode(firstLightSouth, INPUT);
   Serial.begin(9600);
-  timeZero = millis();
+  timeZero[0] = millis();
 }
 
 
-void loop() {
+void loop() 
+{
   readCars();
-  //Serial.println(dutyCycle);
-  //dutyCycle = 0.25;
-  if ((millis() > timeZero + (period * dutyCycle) - 1000)) 
+  //Serial.println(dutyCycle[0]);
+  //dutyCycle[0] = 0.25;
+  for (int i = 0; i < 2; i++) 
   {
-    if (millis() > timeZero + (period * dutyCycle))
+    if ((millis() > timeZero[i] + (period * dutyCycle[i]) - 1000)) 
     {
-      if (millis() > timeZero + period - 1000)
+      if (millis() > timeZero[i] + (period * dutyCycle[i]))
       {
-        if (millis() > timeZero + period)
+        if (millis() > timeZero[i] + period - 1000)
         {
-          handleChange();
-          timeZero = millis();
-          Serial.println(carW);
-          Serial.println(carS);
-          calculateDutyCycle();
-          Serial.print("Duty cycle after: ");
-          Serial.println(dutyCycle);
-          carW = 0;
-          carS = 0;
-          isChanging = false;
+          if (millis() > timeZero[i] + period)
+          {
+            handleChange(i);
+            timeZero[i] = millis();
+            
+            Serial.print("Cars in junction ");
+            Serial.print(i);
+            Serial.print(": (West) ");
+            Serial.print(cars[i][0]);
+            Serial.print(", (South) ");
+            Serial.println(cars[i][1]);
+            Serial.println("\n");
+
+            calculateDutyCycle(i);
+            
+            Serial.print("Duty cycle: ");
+            Serial.println(dutyCycle[i]);
+            
+            cars[i][0] = 0;
+            cars[i][1] = 0;
+            isChanging[i] = false;
+          }
+          else if (!isChanging[i])
+          {
+            isChanging[i] = !isChanging[i];
+            handleYellow(i);
+          }
         }
-        else if (!isChanging)
+        else if (isChanging[i])
         {
-          isChanging = !isChanging;
-          handleYellow();
+          isChanging[i] = !isChanging[i];
+          handleChange(i);
         }
       }
-      else if (isChanging)
+      else if (!isChanging[i])
       {
-        isChanging = !isChanging;
-        handleChange();
+        isChanging[i] = !isChanging[i];
+        handleYellow(i);
       }
-    }
-    else if (!isChanging)
-    {
-      isChanging = !isChanging;
-      handleYellow();
     }
   }
 }
@@ -93,18 +106,20 @@ void loop() {
 // TODO, initialize the RED and GREEN light according to the flag
 void initialState () {
   int counter = 0;
+  //const int junctionLEDs[2][2][3] = {{{13, 12, 11}, {8, 10, 9}}, {{7, 6, 5}, {2, 4, 3}}};
+
   while (counter < 3) {
     digitalWrite(10, HIGH);
     digitalWrite(12, HIGH);
-    time_now = millis();
-    while(millis() < time_now + 1000)
+    time_now[0] = millis();
+    while(millis() < time_now[0] + 1000)
     {
       // empty
     }
     digitalWrite(10, LOW);
     digitalWrite(12, LOW);
-    time_now = millis();
-    while(millis() < time_now + 1000)
+    time_now[0] = millis();
+    while(millis() < time_now[0] + 1000)
     {
       // empty
     }
@@ -112,80 +127,92 @@ void initialState () {
   }
 }
 
-void handleYellow() {
-  if (changeFirst) {
-    digitalWrite(firstJunctionWest[0], LOW);
-    digitalWrite(firstJunctionSouth[2], LOW);
+void handleYellow(int junction) {
+  if (changeFirst[junction]) {
+    digitalWrite(junctionLEDs[junction][0][0], LOW);
+    digitalWrite(junctionLEDs[junction][1][2], LOW);
+    
   }
   else {
-    digitalWrite(firstJunctionWest[2], LOW);
-    digitalWrite(firstJunctionSouth[0], LOW);
+    digitalWrite(junctionLEDs[junction][0][2], LOW);
+    digitalWrite(junctionLEDs[junction][1][0], LOW);
   }
-  digitalWrite(firstJunctionWest[1], HIGH);
-  digitalWrite(firstJunctionSouth[1], HIGH);
-  changeFirst = !changeFirst;
+  digitalWrite(junctionLEDs[junction][0][1], HIGH);
+  digitalWrite(junctionLEDs[junction][1][1], HIGH);
+  changeFirst[junction] = !changeFirst[junction];
 }
 
-void handleChange(){
+void handleChange(int junction){
   // turns off the yellow lights in both junctions
-  digitalWrite(firstJunctionWest[1], LOW);
-  digitalWrite(firstJunctionSouth[1], LOW);
+  digitalWrite(junctionLEDs[junction][0][1], LOW);
+  digitalWrite(junctionLEDs[junction][1][1], LOW);
 
   // if true, west starts green and south red
-  if (changeFirst) {
-      digitalWrite(firstJunctionWest[0], HIGH);
-      digitalWrite(firstJunctionSouth[2], HIGH);
+  if (changeFirst[junction]) {
+      digitalWrite(junctionLEDs[junction][0][0], HIGH);
+      digitalWrite(junctionLEDs[junction][1][2], HIGH);
   }
   else {
-    digitalWrite(firstJunctionWest[2], HIGH);
-    digitalWrite(firstJunctionSouth[0], HIGH);
+    digitalWrite(junctionLEDs[junction][0][2], HIGH);
+    digitalWrite(junctionLEDs[junction][1][0], HIGH);
   }
 }
 
 
 void readCars(){
-  firstLightWestValue = analogRead(firstLightWest);
-  firstLightSouthValue = analogRead(firstLightSouth);
-  firstLightWestMapped = map(firstLightWestValue, 45, 300, 0, 255);
-  firstLightSouthMapped = map(firstLightSouthValue, 30, 300, 0, 255);
-
-  if (firstLightWestMapped < 50 && !carInW) {
-    carW ++;
-    carInW = true;
+  for (int i = 0; i < 2; i++) 
+  {
+    for (int j = 0; j < 2; j++) 
+    {
+      lightValue[i][j] = analogRead(light[i][j]);
+    }
   }
-  else if (firstLightWestMapped >= 200/2)
-    carInW = false;
 
-  if (firstLightSouthMapped < 50 && !carInS) {
-    carS ++;
-    carInS = true;
+  // TODO add the calibration to initialState
+  lightMapped[0][0] = map(lightValue[0][0], 45, 300, 0, 255);
+  lightMapped[0][1] = map(lightValue[0][1], 20, 200, 0, 255);
+  lightMapped[1][0] = map(lightValue[1][0], 45, 300, 0, 255);
+  lightMapped[1][1] = map(lightValue[1][1], 45, 300, 0, 255);
+
+  for (int i = 0; i < 2; i++) 
+  {
+    if (lightMapped[i][0] < 50 && !carInJunction[i][0]) 
+    {
+      cars[i][0]++;
+      carInJunction[i][0] = true;
+    }
+    else if (lightMapped[i][0] >= 200/2)
+      carInJunction[i][0] = false;
+
+    if (lightMapped[i][1] < 50 && !carInJunction[i][1]) 
+    {
+      cars[i][1]++;
+      carInJunction[i][1] = true;
+    }
+    else if (lightMapped[i][1] >= 300/3)
+      carInJunction[i][1] = false;
   }
-  else if (firstLightSouthMapped >= 300/3)
-    carInS = false;
 }
 
-void calculateDutyCycle() {
+void calculateDutyCycle(int junction) {
   //  Duty_cycle_S = cars_S / (cars_S + cars_W)
   //  Duty_cycle_W = cars_W / (cars_S + cars_W)
   //  5/20 = 25% ≤ Duty cycle ≤ 15/20 = 75%
-  if (carS == 0 && carW == 0)
+  if (cars[junction][0] == 0 && cars[junction][1] == 0)
   { 
-    dutyCycle = 0.50;
+    dutyCycle[junction] = 0.50;
     return;
   }
 
-  dutyCycle = (float) carS / ( (float) carS + (float) carW);
+  dutyCycle[junction] = (float) cars[junction][1] / ( (float) cars[junction][1] + (float) cars[junction][0]);
 
-  //Serial.print("Duty cycle before: ");
-  //Serial.println(dutyCycle);
-
-  if (dutyCycle > 0.75)
+  if (dutyCycle[junction] > 0.75)
   {
-    dutyCycle = 0.75;
+    dutyCycle[junction] = 0.75;
   }
 
-  if (dutyCycle < 0.25)
+  if (dutyCycle[junction] < 0.25)
   {
-    dutyCycle = 0.25;
+    dutyCycle[junction] = 0.25;
   }
 }
