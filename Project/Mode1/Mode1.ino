@@ -194,7 +194,7 @@ void readCars(){
     }
   }
 
-  for (int i = 0; i < 2; i++) 
+  /*for (int i = 0; i < 2; i++) 
   {
     for (int j = 0; j < 2; j++) 
     {
@@ -203,16 +203,16 @@ void readCars(){
       Serial.print(" LightMapped: ");
       Serial.println(lightMapped[i][j]);   
     }
-  }
+  }*/
 
   for (int i = 0; i < 2; i++) 
   {
-    if ((lightMapped[i][0] < 140) && !carInJunction[i][0]) 
+    if ((lightMapped[i][0] < 125) && !carInJunction[i][0]) 
     {
       cars[i][0]++;
       carInJunction[i][0] = true;
     }
-    else if (lightMapped[i][0] >= 180)
+    else if (lightMapped[i][0] >= 190)
       carInJunction[i][0] = false;
 
     if ((lightMapped[i][1] < 140) && !carInJunction[i][1]) 
