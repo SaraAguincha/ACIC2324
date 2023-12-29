@@ -1,15 +1,23 @@
 #include <Wire.h>
 
+// Coordinates
+int coordinate = 0;
+
+const unsigned int maxSpeed = 4000;
+
 // Initialization
 const int junctionLEDs[2][2][3] = {{{13, 12, 11}, {8, 10, 9}}, {{7, 6, 5}, {2, 4, 3}}};
 
-// Time stuff
+int circularBuffer[2][32];
+int head[2] = {0, 0};
+int tail[2] = {0, 0};
+// Time
 long unsigned int time_now[] = {0, 0};
 long unsigned int timeZero[] = {0, 0};
 long unsigned int period = 10000;
 float dutyCycle[] = {0.5, 0.5};
-bool changeFirst[] = {true, true};
-bool isChanging[] = {false, false};
+bool westAllowed[] = {false, false};
+bool isChanging[] = {true, true};
 
 // Section related with the light sensors
 const int light[2][2] = {{A0, A1}, {A2, A3}};
@@ -66,19 +74,8 @@ void loop()
           {
             handleChange(i);
             timeZero[i] = millis();
-            
-            Serial.print("Cars in junction ");
-            Serial.print(i);
-            Serial.print(": (West) ");
-            Serial.print(cars[i][0]);
-            Serial.print(", (South) ");
-            Serial.println(cars[i][1]);
-            Serial.println("\n");
-
             calculateDutyCycle(i);
-            
-            Serial.print("Duty cycle: ");
-            Serial.println(dutyCycle[i]);
+            printStatus(i);
             
             cars[i][0] = 0;
             cars[i][1] = 0;
@@ -102,7 +99,26 @@ void loop()
         handleYellow(i);
       }
     }
+    else if (isChanging[i])
+    {
+      isChanging[i] = !isChanging[i];
+      handleChange(i);
+    }
   }
+}
+
+void printStatus(int junction)
+{
+  Serial.print("Cars in junction ");
+  Serial.print(junction);
+  Serial.print(": (West) ");
+  Serial.print(cars[junction][0]);
+  Serial.print(", (South) ");
+  Serial.println(cars[junction][1]);
+  Serial.println("\n");
+
+  Serial.print("Duty cycle: ");
+  Serial.println(dutyCycle[junction]);
 }
 
 // TODO, initialize the RED and GREEN light according to the flag
@@ -145,15 +161,10 @@ void initialState () {
       Serial.print("\n");      
     }
   }
-
-
-  // TODO, maybe elsewhere
-  handleChange(0);
-  handleChange(1);
 }
 
 void handleYellow(int junction) {
-  if (changeFirst[junction]) {
+  if (westAllowed[junction]) {
     digitalWrite(junctionLEDs[junction][0][0], LOW);
     digitalWrite(junctionLEDs[junction][1][2], LOW);
     
@@ -164,7 +175,7 @@ void handleYellow(int junction) {
   }
   digitalWrite(junctionLEDs[junction][0][1], HIGH);
   digitalWrite(junctionLEDs[junction][1][1], HIGH);
-  changeFirst[junction] = !changeFirst[junction];
+  westAllowed[junction] = !westAllowed[junction];
 }
 
 void handleChange(int junction){
@@ -173,7 +184,7 @@ void handleChange(int junction){
   digitalWrite(junctionLEDs[junction][1][1], LOW);
 
   // if true, west starts green and south red
-  if (changeFirst[junction]) {
+  if (westAllowed[junction]) {
       digitalWrite(junctionLEDs[junction][0][0], HIGH);
       digitalWrite(junctionLEDs[junction][1][2], HIGH);
   }
@@ -210,6 +221,30 @@ void readCars(){
     if ((lightMapped[i][0] < 125) && !carInJunction[i][0]) 
     {
       cars[i][0]++;
+
+      if (head[i] < tail[i])
+      {
+        Serial.println("ADEEEEUS");
+        if (circularBuffer[i][head[i]] + maxSpeed > millis())
+        {
+          Serial.println("VOLTEEIII");
+          stop(i);
+        }
+        head[i] = (head[i] + 1) % 32;
+      }
+      
+      if (i == 0)
+      {
+        Serial.println("OLAAAA");
+        circularBuffer[i + 1][tail[i + 1]] = millis();
+        tail[i + 1] = (tail[i + 1] + 1) % 32;
+      }
+
+      else if (i == 1)
+      {
+        // send to the next arduino
+      }
+
       carInJunction[i][0] = true;
     }
     else if (lightMapped[i][0] >= 190)
@@ -245,6 +280,13 @@ void calculateDutyCycle(int junction)
   {
     dutyCycle[junction] = 0.25;
   }
+}
+
+void stop(int junction)
+{
+  timeZero[junction] = millis();
+  westAllowed[junction] = false;
+  isChanging[junction] = true;
 }
 
 void lightCalibration() 
