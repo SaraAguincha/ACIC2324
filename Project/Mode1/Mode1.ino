@@ -1,9 +1,12 @@
 #include <Wire.h>
 
 // Coordinates
-int coordinate = 0;
+int coordinate = 1;
 
 const unsigned int maxSpeed = 4000;
+
+// TODO - Eventually do this - turns yellow after red
+bool forcedStop[2] = {false, false};
 
 // Initialization
 const int junctionLEDs[2][2][3] = {{{13, 12, 11}, {8, 10, 9}}, {{7, 6, 5}, {2, 4, 3}}};
@@ -14,9 +17,9 @@ int tail[2] = {0, 0};
 // Time
 long unsigned int time_now[] = {0, 0};
 long unsigned int timeZero[] = {0, 0};
-long unsigned int period = 10000;
+long unsigned int period = 20000;
 float dutyCycle[] = {0.5, 0.5};
-bool westAllowed[] = {false, false};
+bool westAllowed[] = {true, true};
 bool isChanging[] = {true, true};
 
 // Section related with the light sensors
@@ -64,17 +67,17 @@ void loop()
   //dutyCycle[0] = 0.25;
   for (int i = 0; i < 2; i++) 
   {
-    if ((millis() > timeZero[i] + (period * dutyCycle[i]) - 1000)) 
+    if (millis() > timeZero[i] + 1000) 
     {
       if (millis() > timeZero[i] + (period * dutyCycle[i]))
       {
-        if (millis() > timeZero[i] + period - 1000)
+        if (millis() > timeZero[i] + (period * dutyCycle[i]) + 1000)
         {
           if (millis() > timeZero[i] + period)
           {
-            handleChange(i);
+            handleYellow(i);
             timeZero[i] = millis();
-            calculateDutyCycle(i);
+            //calculateDutyCycle(i);
             printStatus(i);
             
             cars[i][0] = 0;
@@ -84,25 +87,25 @@ void loop()
           else if (!isChanging[i])
           {
             isChanging[i] = !isChanging[i];
-            handleYellow(i);
+            handleChange(i);
           }
         }
         else if (isChanging[i])
         {
           isChanging[i] = !isChanging[i];
-          handleChange(i);
+          handleYellow(i);
         }
       }
       else if (!isChanging[i])
       {
         isChanging[i] = !isChanging[i];
-        handleYellow(i);
+        handleChange(i);
       }
     }
     else if (isChanging[i])
     {
       isChanging[i] = !isChanging[i];
-      handleChange(i);
+      handleYellow(i);
     }
   }
 }
@@ -285,8 +288,9 @@ void calculateDutyCycle(int junction)
 void stop(int junction)
 {
   timeZero[junction] = millis();
-  westAllowed[junction] = false;
+  westAllowed[junction] = true;
   isChanging[junction] = true;
+  forcedStop[junction] = true;
 }
 
 void lightCalibration() 
