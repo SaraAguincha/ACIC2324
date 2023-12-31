@@ -34,8 +34,8 @@ bool carInJunction[2][2] = {{false, false}, {false, false}};
 // Speeding stuff
 const unsigned int maxSpeed = 4000;
 // Clock
-long unsigned int deltaClock = 0;
-long unsigned int error = 500; 
+long int deltaClock = 0;
+long unsigned int error = 5; // 100 ms unit 
 bool synchronized = false;
 bool stopSync = false;
 long unsigned int westClock = 0;
@@ -135,11 +135,19 @@ void receiveEvent(int howMany)
 // Event Received
 void clock(int destination, int source)
 {
+  Serial.print("delta clock ");
+  Serial.println(deltaClock);
+
+  Serial.print("my clock: ");
+  long int myCock = millis() / 100 + deltaClock;
+  Serial.println(myCock);
+
   if (stopSync)
     return;
 
   long unsigned int receivedClock = 0;
   long unsigned int timeNow = 0;
+  long int condition = 0;
   // 32 bits -> 4 bytes
   int received;
   while (Wire.available())
@@ -170,42 +178,49 @@ void clock(int destination, int source)
   if (eastClock && westClock)
   {
     timeNow = millis() / 100;
-    long unsigned int average = ((timeNow + deltaClock) + eastClock + westClock) / 3;
-    deltaClock = abs(timeNow - average);
-    if (abs((timeNow + deltaClock) - average) < error)
+    long unsigned int myNewClock = ((timeNow + deltaClock) + eastClock + westClock) / 3;
+    condition = (timeNow + deltaClock) - myNewClock;
+    condition = abs(condition);
+    if (condition < error)
     {
       stopSync = true;
       eastClock = 0;
       westClock = 0;
-      Serial.println("DONE!");
+      Serial.println("Done!!");
       return;
     }
+    deltaClock = myNewClock - timeNow;
   }
   else if (coordinate == 0 && eastClock)
   {
     timeNow = millis() / 100;
-    long unsigned int average = ((timeNow + deltaClock) + eastClock) / 2;
-    deltaClock = abs(timeNow - average);
-    if (abs((timeNow + deltaClock) - average) < error)
+    long unsigned int myNewClock = ((timeNow + deltaClock) + eastClock) / 2;
+    condition = (timeNow + deltaClock) - myNewClock;
+    condition = abs(condition);
+    if (condition < error)
     {
       stopSync = true;
       eastClock = 0;
-      Serial.println("DONE!");
+      Serial.println("Done!!");
       return;
     }
+    deltaClock = myNewClock - timeNow;
   }
   else if (coordinate == highestCoordinate && westClock)
   {
     timeNow = millis() / 100;
-    long unsigned int average = ((timeNow + deltaClock) + westClock) / 2;
-    deltaClock = abs(timeNow - average);
-    if (abs((timeNow + deltaClock) - average) < error)
+    long unsigned int myNewClock = ((timeNow + deltaClock) + westClock) / 2;
+    
+    condition = (timeNow + deltaClock) - myNewClock;
+    condition = abs(condition);
+    if (condition < error)
     {
       stopSync = true;
       westClock = 0;
-      Serial.println("DONE!");
+      Serial.println("Done!!");
       return;
     }
+    deltaClock = myNewClock - timeNow;
   }
 }
 
@@ -256,11 +271,14 @@ void sync()
 void clockSync()
 {
   long unsigned int data;
+  long int myClock = 0;
   while (!synchronized)
-  {
+  {    
+    Serial.print("my clock: ");
+    myClock = (millis() / 100) + deltaClock;
+    Serial.println(myClock);
     if (coordinate != 0)
     {
-      deltaClock = 0;
       Wire.beginTransmission(coordinate - 1);
       // Addressing block
       int address = (coordinate - 1) << 4;
