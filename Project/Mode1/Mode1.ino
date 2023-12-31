@@ -2,11 +2,8 @@
 
 // Coordinates
 int coordinate = 1;
-
-const unsigned int maxSpeed = 4000;
-
-// TODO - Eventually do this - turns yellow after red
-bool forcedStop[2] = {false, false};
+int allCoordinates[2] = {0, 1};
+int highestCoordinate = (sizeof(allCoordinates) / sizeof(allCoordinates[0])) - 1;
 
 // Initialization
 const int junctionLEDs[2][2][3] = {{{13, 12, 11}, {8, 10, 9}}, {{7, 6, 5}, {2, 4, 3}}};
@@ -34,8 +31,23 @@ int lightMax[2][2] = {{0, 0}, {0, 0}};
 int cars[2][2] = {{0, 0}, {0, 0}};
 bool carInJunction[2][2] = {{false, false}, {false, false}};
 
+// Speeding stuff
+const unsigned int maxSpeed = 4000;
+// Clock
+long unsigned int deltaClock = 0;
+long unsigned int error = 500; 
+bool synchronized = false;
+bool stopSync = false;
+long unsigned int westClock = 0;
+long unsigned int eastClock = 0;
+int doneCounter = 0;
 
-void setup() {
+// TODO - Eventually do this - turns yellow after red
+bool forcedStop[2] = {false, false};
+
+void setup() 
+{
+  Serial.begin(9600);
   for (int i = 0; i < 2; i++) 
   {
     for (int j = 0; j < 2; j++) 
@@ -53,18 +65,248 @@ void setup() {
       pinMode(light[i][j], INPUT);
     }
   }
-  Serial.begin(9600);
+  // I2C Communication
+  Wire.begin(coordinate);
+  Wire.onReceive(receiveEvent);
+  // Clock synchronization
+  clockSync();
+  // Start of the system
   initialState();
   timeZero[0] = millis();
   timeZero[1] = millis();
 }
 
+// function that executes whenever data is received from master
+// this function is registered as an event, see setup()
+void receiveEvent(int howMany)
+{
+  int received;
+  int destination;
+  int source;
+  int event;
+  // loop through all but the last
+  if (Wire.available())
+  {
+    received = Wire.read();
+    destination = received >> 4;
+  }
 
+  if (Wire.available())
+  {
+    received = Wire.read();
+    source = received >> 4;
+  }
+
+  if (Wire.available())
+  {
+    received = Wire.read();
+    event = received;
+  }
+
+  // Round robin with interrupts
+  switch (event)
+  {
+    // Clock
+    case 0:
+      clock(destination, source);
+      break;
+    // Car
+    case 1:
+      
+      break;
+    case 2:
+    // Mode
+      
+      break;
+    case 3:
+    // Status
+      
+      break;
+    case 4:
+    // Sync
+      
+      break;
+  }
+}
+//
+// Receiving functions
+//
+
+// Event Received
+void clock(int destination, int source)
+{
+  if (stopSync)
+    return;
+
+  long unsigned int receivedClock = 0;
+  long unsigned int timeNow = 0;
+  // 32 bits -> 4 bytes
+  int received;
+  while (Wire.available())
+  {
+    received = Wire.read();
+    receivedClock = receivedClock << 8;
+    receivedClock += received;
+  }
+  Serial.print("ReceivedClock ");
+  Serial.println(receivedClock);
+
+  if (source == coordinate - 1)
+  {
+    westClock = receivedClock;
+  }
+  else if (source == coordinate + 1)
+  {
+    eastClock = receivedClock;
+  }
+
+  
+  /*Serial.println(eastClock);
+  Serial.println(westClock);
+  Serial.println(" ");*/
+
+  //Serial.println(deltaClock);
+
+  if (eastClock && westClock)
+  {
+    timeNow = millis() / 100;
+    long unsigned int average = ((timeNow + deltaClock) + eastClock + westClock) / 3;
+    deltaClock = abs(timeNow - average);
+    if (abs((timeNow + deltaClock) - average) < error)
+    {
+      stopSync = true;
+      eastClock = 0;
+      westClock = 0;
+      Serial.println("DONE!");
+      return;
+    }
+  }
+  else if (coordinate == 0 && eastClock)
+  {
+    timeNow = millis() / 100;
+    long unsigned int average = ((timeNow + deltaClock) + eastClock) / 2;
+    deltaClock = abs(timeNow - average);
+    if (abs((timeNow + deltaClock) - average) < error)
+    {
+      stopSync = true;
+      eastClock = 0;
+      Serial.println("DONE!");
+      return;
+    }
+  }
+  else if (coordinate == highestCoordinate && westClock)
+  {
+    timeNow = millis() / 100;
+    long unsigned int average = ((timeNow + deltaClock) + westClock) / 2;
+    deltaClock = abs(timeNow - average);
+    if (abs((timeNow + deltaClock) - average) < error)
+    {
+      stopSync = true;
+      westClock = 0;
+      Serial.println("DONE!");
+      return;
+    }
+  }
+}
+
+void sync()
+{
+  int syncData;
+  int received = 0;
+  if (Wire.available())
+  {
+    received = Wire.read();
+    syncData = received;
+  }
+  // Done
+  if (syncData == 0x01)
+  {
+    if (coordinate == 0)
+    {
+      doneCounter++;
+      if (doneCounter >= highestCoordinate)
+      {
+        synchronized = true;
+        for(int i = 0; i < highestCoordinate + 1; i++)
+        {
+          Wire.beginTransmission(i);
+          // Destination
+          Wire.write(i >> 4);
+          // Source
+          Wire.write(coordinate >> 4);
+          // Event
+          Wire.write(0x04);
+          // Data
+          Wire.write(0x02);
+          Wire.endTransmission();
+        }
+      } 
+    }
+  }
+  // Ack
+  else if (syncData == 0x02)
+  {
+    synchronized = true;
+  }
+}
+
+//
+// Sending functions
+//
+void clockSync()
+{
+  long unsigned int data;
+  while (!synchronized)
+  {
+    if (coordinate != 0)
+    {
+      deltaClock = 0;
+      Wire.beginTransmission(coordinate - 1);
+      // Addressing block
+      int address = (coordinate - 1) << 4;
+      Wire.write(address);
+      // Source
+      int source = coordinate << 4;
+      Wire.write(source);
+      // Event
+      int event = 0x00;
+      Wire.write(event);
+      // Data 
+      data = (millis() / 100) + deltaClock;
+      for (int i = 3; i >= 0; i--)
+      {
+        Wire.write(data >> 8 * i);
+      }
+      Wire.endTransmission();
+    }
+    if (coordinate != highestCoordinate)
+    {
+      Wire.beginTransmission(coordinate + 1);
+      // Addressing block
+      int address = (coordinate + 1) << 4;
+      Wire.write(address);
+      // Source
+      int source = coordinate << 4;
+      Wire.write(source);
+      // Event
+      int event = 0x00;
+      Wire.write(event);
+      // Data 
+      data = (millis() / 100) + deltaClock;
+      for (int i = 3; i >= 0; i--)
+      {
+        Wire.write(data >> 8 * i);
+      }
+      Wire.endTransmission();
+    }
+    delay(1000);
+  }
+}
+
+// Other Functions
 void loop() 
 {
   readCars();
-  //Serial.println(dutyCycle[0]);
-  //dutyCycle[0] = 0.25;
   for (int i = 0; i < 2; i++) 
   {
     if (millis() > timeZero[i] + 1000) 
@@ -77,7 +319,7 @@ void loop()
           {
             handleYellow(i);
             timeZero[i] = millis();
-            //calculateDutyCycle(i);
+            calculateDutyCycle(i);
             printStatus(i);
             
             cars[i][0] = 0;
@@ -128,7 +370,6 @@ void printStatus(int junction)
 void initialState () {
   int counter = 0;
   long unsigned int init_time = 0;
-  //const int junctionLEDs[2][2][3] = {{{13, 12, 11}, {8, 10, 9}}, {{7, 6, 5}, {2, 4, 3}}};
   bool blink = true;
   init_time = millis();
   while (counter < 6) {
@@ -208,17 +449,6 @@ void readCars(){
     }
   }
 
-  /*for (int i = 0; i < 2; i++) 
-  {
-    for (int j = 0; j < 2; j++) 
-    {
-      Serial.print("In junction ");
-      Serial.print(i);
-      Serial.print(" LightMapped: ");
-      Serial.println(lightMapped[i][j]);   
-    }
-  }*/
-
   for (int i = 0; i < 2; i++) 
   {
     if ((lightMapped[i][0] < 125) && !carInJunction[i][0]) 
@@ -227,10 +457,8 @@ void readCars(){
 
       if (head[i] < tail[i])
       {
-        Serial.println("ADEEEEUS");
         if (circularBuffer[i][head[i]] + maxSpeed > millis())
         {
-          Serial.println("VOLTEEIII");
           stop(i);
         }
         head[i] = (head[i] + 1) % 32;
@@ -238,7 +466,6 @@ void readCars(){
       
       if (i == 0)
       {
-        Serial.println("OLAAAA");
         circularBuffer[i + 1][tail[i + 1]] = millis();
         tail[i + 1] = (tail[i + 1] + 1) % 32;
       }
