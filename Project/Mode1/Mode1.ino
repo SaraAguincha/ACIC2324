@@ -265,14 +265,8 @@ void sync()
   {
     if (coordinate == 0)
     {
+      Serial.println("Entered sync");
       doneCounter++;
-      if (doneCounter == highestCoordinate + 1)
-      {
-        synchronized = true;
-        // Node 0 sends sync ack to all other nodes and the current mode
-        syncAck();
-        sendMode();
-      } 
     }
   }
   // Ack
@@ -297,9 +291,9 @@ void clockSync()
       if (dataReceived)
         dataHandler();
     }
-    //Serial.print("my clock: ");
-    //myClock = (millis() / 100) + deltaClock;
-    //Serial.println(myClock);
+    Serial.print("my clock: ");
+    myClock = (millis() / 100) + deltaClock;
+    Serial.println(myClock);
     if (coordinate != 0)
     {
       Wire.beginTransmission(coordinate - 1);
@@ -313,7 +307,6 @@ void clockSync()
       int event = 0x00;
       Wire.write(event);
       // Data (TIME - 32 bit integer)
-      long unsigned int data = (millis() / 100) + deltaClock;
       Wire.write(parseTime());
       Wire.endTransmission();
     }
@@ -333,6 +326,15 @@ void clockSync()
       Wire.write(parseTime());
       Wire.endTransmission();
     }
+
+    // Check if synchronization has ended
+    if (coordinate == 0 && doneCounter == highestCoordinate + 1)
+    {
+      synchronized = true;
+      // Node 0 sends sync ack to all other nodes and the current mode
+      syncAck();
+      sendMode();
+    } 
   }
 }
 
