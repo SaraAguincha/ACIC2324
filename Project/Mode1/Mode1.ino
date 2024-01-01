@@ -1,7 +1,7 @@
 #include <Wire.h>
 
 // Coordinates
-int coordinate = 1;
+int coordinate = 0;
 int allCoordinates[2] = {0, 1};
 int highestCoordinate = (sizeof(allCoordinates) / sizeof(allCoordinates[0])) - 1;
 
@@ -96,14 +96,7 @@ void receiveEvent(int howMany)
 
 // Event Received
 void clock(int destination, int source)
-{
-  /*Serial.print("delta clock ");
-  Serial.println(deltaClock);
-
-  Serial.print("my clock: ");
-  long int myCock = millis() / 100 + deltaClock;
-  Serial.println(myCock);*/
-  
+{ 
   long unsigned int receivedClock = 0;
   long unsigned int timeNow = 0;
   long int condition = 0;
@@ -118,8 +111,6 @@ void clock(int destination, int source)
 
   if (stopSync)
     return;
-  //Serial.print("ReceivedClock ");
-  //Serial.println(receivedClock);
 
   if (source == coordinate - 1)
   {
@@ -129,12 +120,6 @@ void clock(int destination, int source)
   {
     eastClock = receivedClock;
   }
-
-  /*Serial.println(eastClock);
-  Serial.println(westClock);
-  Serial.println(" ");*/
-
-  //Serial.println(deltaClock);
   
   timeNow = millis() / 100;
   long unsigned int myNewClock = 0;
@@ -169,6 +154,26 @@ void clock(int destination, int source)
     return;
   }
   deltaClock = myNewClock - timeNow;
+}
+
+void car()
+{
+  long unsigned int receivedClock = 0;
+  long unsigned int timeNow = 0;
+  long int condition = 0;
+  // 32 bits -> 4 bytes
+  int received;
+  Serial.println("Car received");
+  while (Wire.available())
+  {
+    received = Wire.read();
+    receivedClock = receivedClock << 8;
+    receivedClock += received;
+  }
+
+  // A controller only receives from the
+  circularBuffer[0][tail[0]] = receivedClock;
+  tail[0] = (tail[0] + 1) % 32;
 }
 
 // Send Sync Done, and Receive Sync Ack
@@ -271,6 +276,7 @@ void carThrough(int coordinateToSend)
   // Data (TIME - 32 bit integer)
   Wire.write(parseTime());
   Wire.endTransmission();
+  Serial.println("Car through");
 }
 
 // When in sync send a Done to coordinate 0
@@ -361,7 +367,7 @@ void dataHandler()
       break;
     // Car
     case 1:
-      
+      car();
       break;
     case 2:
     // Mode
@@ -385,6 +391,9 @@ void dataHandler()
 // Other Functions
 void loop() 
 {
+  if (dataReceived)
+    dataHandler();
+
   readCars();
   for (int i = 0; i < 2; i++) 
   {
@@ -489,7 +498,6 @@ void handleYellow(int junction) {
   if (westAllowed[junction]) {
     digitalWrite(junctionLEDs[junction][0][0], LOW);
     digitalWrite(junctionLEDs[junction][1][2], LOW);
-    
   }
   else {
     digitalWrite(junctionLEDs[junction][0][2], LOW);
@@ -533,24 +541,33 @@ void readCars(){
     {
       cars[i][0]++;
 
+      // Speed related
       if (head[i] < tail[i])
       {
+        // Verifies timestamp in self buffer to see if the speed limit was exceded
         if (circularBuffer[i][head[i]] + maxSpeed > (millis() / 100) + deltaClock)
         {
           stop(i);
         }
+        // Head (read pointer) increaments
         head[i] = (head[i] + 1) % 32;
       }
       
+      // First junction writes in the second junction
       if (i == 0)
       {
         circularBuffer[i + 1][tail[i + 1]] = (millis() / 100) + deltaClock;
         tail[i + 1] = (tail[i + 1] + 1) % 32;
       }
 
+      // Second junction sends to next controller
       else if (i == 1)
       {
         // send to the next arduino
+        if (coordinate != highestCoordinate)
+        {
+          carThrough(coordinate + 1);
+        }
       }
 
       carInJunction[i][0] = true;
