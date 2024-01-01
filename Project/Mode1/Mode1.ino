@@ -14,7 +14,7 @@ int tail[2] = {0, 0};
 // Time
 long unsigned int time_now[] = {0, 0};
 long unsigned int timeZero[] = {0, 0};
-long unsigned int period = 20000;
+long unsigned int period = 200;
 float dutyCycle[] = {0.5, 0.5};
 bool westAllowed[] = {true, true};
 bool isChanging[] = {true, true};
@@ -33,14 +33,17 @@ bool carInJunction[2][2] = {{false, false}, {false, false}};
 
 // Speeding stuff
 const unsigned int maxSpeed = 4000;
+
 // Clock
 long int deltaClock = 0;
-long unsigned int error = 5; // 100 ms unit 
+long unsigned int error = 1; // 100 ms unit 
 bool synchronized = false;
 bool stopSync = false;
 long unsigned int westClock = 0;
 long unsigned int eastClock = 0;
 int doneCounter = 0;
+
+bool dataReceived = false;
 
 // TODO - Eventually do this - turns yellow after red
 bool forcedStop[2] = {false, false};
@@ -72,61 +75,15 @@ void setup()
   clockSync();
   // Start of the system
   initialState();
-  timeZero[0] = millis();
-  timeZero[1] = millis();
+  timeZero[0] = (millis() / 100) + deltaClock;
+  timeZero[1] = (millis() / 100) + deltaClock;
 }
 
 // function that executes whenever data is received from master
 // this function is registered as an event, see setup()
 void receiveEvent(int howMany)
 {
-  int received;
-  int destination;
-  int source;
-  int event;
-  // loop through all but the last
-  if (Wire.available())
-  {
-    received = Wire.read();
-    destination = received >> 4;
-  }
-
-  if (Wire.available())
-  {
-    received = Wire.read();
-    source = received >> 4;
-  }
-
-  if (Wire.available())
-  {
-    received = Wire.read();
-    event = received;
-  }
-
-  // Round robin with interrupts
-  switch (event)
-  {
-    // Clock
-    case 0:
-      clock(destination, source);
-      break;
-    // Car
-    case 1:
-      
-      break;
-    case 2:
-    // Mode
-      
-      break;
-    case 3:
-    // Status
-      
-      break;
-    case 4:
-    // Sync
-      
-      break;
-  }
+  dataReceived = true;
 }
 //
 // Receiving functions
@@ -135,15 +92,13 @@ void receiveEvent(int howMany)
 // Event Received
 void clock(int destination, int source)
 {
-  Serial.print("delta clock ");
+  /*Serial.print("delta clock ");
   Serial.println(deltaClock);
 
   Serial.print("my clock: ");
   long int myCock = millis() / 100 + deltaClock;
-  Serial.println(myCock);
-
-  if (stopSync)
-    return;
+  Serial.println(myCock);*/
+  
 
   long unsigned int receivedClock = 0;
   long unsigned int timeNow = 0;
@@ -156,8 +111,11 @@ void clock(int destination, int source)
     receivedClock = receivedClock << 8;
     receivedClock += received;
   }
-  Serial.print("ReceivedClock ");
-  Serial.println(receivedClock);
+
+  if (stopSync)
+    return;
+  //Serial.print("ReceivedClock ");
+  //Serial.println(receivedClock);
 
   if (source == coordinate - 1)
   {
@@ -187,6 +145,7 @@ void clock(int destination, int source)
       eastClock = 0;
       westClock = 0;
       Serial.println("Done!!");
+      sendDone();
       return;
     }
     deltaClock = myNewClock - timeNow;
@@ -201,6 +160,7 @@ void clock(int destination, int source)
     {
       stopSync = true;
       eastClock = 0;
+      doneCounter++;
       Serial.println("Done!!");
       return;
     }
@@ -218,12 +178,14 @@ void clock(int destination, int source)
       stopSync = true;
       westClock = 0;
       Serial.println("Done!!");
+      sendDone();
       return;
     }
     deltaClock = myNewClock - timeNow;
   }
 }
 
+// Send Sync Done, and Receive Sync Ack
 void sync()
 {
   int syncData;
@@ -232,6 +194,7 @@ void sync()
   {
     received = Wire.read();
     syncData = received;
+    //Serial.println(syncData);
   }
   // Done
   if (syncData == 0x01)
@@ -239,16 +202,16 @@ void sync()
     if (coordinate == 0)
     {
       doneCounter++;
-      if (doneCounter >= highestCoordinate)
+      if (doneCounter == highestCoordinate + 1)
       {
         synchronized = true;
         for(int i = 0; i < highestCoordinate + 1; i++)
         {
           Wire.beginTransmission(i);
           // Destination
-          Wire.write(i >> 4);
+          Wire.write(i << 4);
           // Source
-          Wire.write(coordinate >> 4);
+          Wire.write(coordinate << 4);
           // Event
           Wire.write(0x04);
           // Data
@@ -265,6 +228,23 @@ void sync()
   }
 }
 
+// When in sync send a Done to coordinate 0
+void sendDone()
+{
+  //Serial.println("ANTES");
+  Wire.beginTransmission(0);
+  // Destination
+  Wire.write(0x00);
+  // Source
+  Wire.write(coordinate << 4);
+  // Event
+  Wire.write(0x04);
+  // Data
+  Wire.write(0x01);
+  Wire.endTransmission();
+  Serial.println("DEPOIS");
+}
+
 //
 // Sending functions
 //
@@ -274,9 +254,13 @@ void clockSync()
   long int myClock = 0;
   while (!synchronized)
   {    
-    Serial.print("my clock: ");
-    myClock = (millis() / 100) + deltaClock;
-    Serial.println(myClock);
+    if (dataReceived)
+    {
+      dataHandler();
+    }
+    //Serial.print("my clock: ");
+    //myClock = (millis() / 100) + deltaClock;
+    //Serial.println(myClock);
     if (coordinate != 0)
     {
       Wire.beginTransmission(coordinate - 1);
@@ -317,7 +301,65 @@ void clockSync()
       }
       Wire.endTransmission();
     }
-    delay(1000);
+    delay(100);
+  }
+}
+
+void dataHandler()
+{
+  int received;
+  int destination;
+  int source;
+  int event;
+  // loop through all but the last
+  if (Wire.available())
+  {
+    received = Wire.read();
+    destination = received >> 4;
+  }
+
+  if (Wire.available())
+  {
+    received = Wire.read();
+    source = received >> 4;
+  }
+
+  if (Wire.available())
+  {
+    received = Wire.read();
+    event = received;
+  }
+
+  //Serial.print("Received event: ");
+  //Serial.println(event);
+
+  // Round robin with interrupts
+  switch (event)
+  {
+    // Clock
+    case 0:
+      //clock = true;
+      clock(destination, source);
+      break;
+    // Car
+    case 1:
+      
+      break;
+    case 2:
+    // Mode
+      
+      break;
+    case 3:
+    // Status
+      
+      break;
+    case 4:
+    // Sync
+      sync();
+      break;
+
+    default:
+      break;
   }
 }
 
@@ -327,16 +369,16 @@ void loop()
   readCars();
   for (int i = 0; i < 2; i++) 
   {
-    if (millis() > timeZero[i] + 1000) 
+    if (((millis() / 100) + deltaClock) > timeZero[i] + 10) 
     {
-      if (millis() > timeZero[i] + (period * dutyCycle[i]))
+      if (((millis() / 100) + deltaClock) > timeZero[i] + (period * dutyCycle[i]))
       {
-        if (millis() > timeZero[i] + (period * dutyCycle[i]) + 1000)
+        if (((millis() / 100) + deltaClock) > timeZero[i] + (period * dutyCycle[i]) + 10)
         {
-          if (millis() > timeZero[i] + period)
+          if (((millis() / 100) + deltaClock) > timeZero[i] + period)
           {
             handleYellow(i);
-            timeZero[i] = millis();
+            timeZero[i] = millis() / 100 + deltaClock;
             calculateDutyCycle(i);
             printStatus(i);
             
@@ -389,12 +431,12 @@ void initialState () {
   int counter = 0;
   long unsigned int init_time = 0;
   bool blink = true;
-  init_time = millis();
+  init_time = (millis() / 100) + deltaClock;
   while (counter < 6) {
 
     lightCalibration();
 
-    if(millis() > init_time + 1000)
+    if((millis() / 100) + deltaClock > init_time + 10)
     {
       // Yellow lights
       for (int i = 0; i < 2; i++)
@@ -403,7 +445,7 @@ void initialState () {
         digitalWrite(junctionLEDs[i][1][1], blink ? HIGH : LOW);
       }
       counter++;
-      init_time = millis();
+      init_time = (millis() / 100) + deltaClock;
       blink = !blink;
     }
   }
@@ -475,7 +517,7 @@ void readCars(){
 
       if (head[i] < tail[i])
       {
-        if (circularBuffer[i][head[i]] + maxSpeed > millis())
+        if (circularBuffer[i][head[i]] + maxSpeed > (millis() / 100) + deltaClock)
         {
           stop(i);
         }
@@ -484,7 +526,7 @@ void readCars(){
       
       if (i == 0)
       {
-        circularBuffer[i + 1][tail[i + 1]] = millis();
+        circularBuffer[i + 1][tail[i + 1]] = (millis() / 100) + deltaClock;
         tail[i + 1] = (tail[i + 1] + 1) % 32;
       }
 
@@ -532,7 +574,7 @@ void calculateDutyCycle(int junction)
 
 void stop(int junction)
 {
-  timeZero[junction] = millis();
+  timeZero[junction] = (millis() / 100) + deltaClock;
   westAllowed[junction] = true;
   isChanging[junction] = true;
   forcedStop[junction] = true;
