@@ -1,8 +1,12 @@
 #include <Wire.h>
 
-// Coordinates
-int coordinate = 0;
+// User variables
+int coordinate = 1;
 int allCoordinates[2] = {0, 1};
+int activeMode = 0;
+// End of user variables
+
+// Coordinates
 int highestCoordinate = (sizeof(allCoordinates) / sizeof(allCoordinates[0])) - 1;
 
 // Initialization
@@ -90,11 +94,69 @@ void receiveEvent(int howMany)
   dataReceived = true;
 }
 
+// Data Handler (round robin)
+void dataHandler()
+{
+  int received;
+  int destination;
+  int source;
+  int event;
+  // loop through all but the last
+  if (Wire.available())
+  {
+    received = Wire.read();
+    destination = received >> 4;
+  }
+
+  if (Wire.available())
+  {
+    received = Wire.read();
+    source = received >> 4;
+  }
+
+  if (Wire.available())
+  {
+    received = Wire.read();
+    event = received;
+  }
+
+  //Serial.print("Received event: ");
+  //Serial.println(event);
+
+  // Round robin with interrupts
+  switch (event)
+  {
+    // Clock
+    case 0:
+      //clock = true;
+      clock(destination, source);
+      break;
+    // Car
+    case 1:
+      car();
+      break;
+    case 2:
+    // Mode
+      mode();
+      break;
+    case 3:
+    // Status
+      
+      break;
+    case 4:
+    // Sync
+      sync();
+      break;
+
+    default:
+      break;
+  }
+  dataReceived = false;
+}
+
 //
 // Receiving functions
 //
-
-// Event Received
 void clock(int destination, int source)
 { 
   long unsigned int receivedClock = 0;
@@ -176,6 +238,17 @@ void car()
   tail[0] = (tail[0] + 1) % 32;
 }
 
+void mode()
+{
+  int modeData;
+  int received = 0;
+  if (Wire.available())
+  {
+    received = Wire.read();
+    activeMode = received;
+  }
+}
+
 // Send Sync Done, and Receive Sync Ack
 void sync()
 {
@@ -196,8 +269,9 @@ void sync()
       if (doneCounter == highestCoordinate + 1)
       {
         synchronized = true;
-        // Node 0 sends sync ack to all other nodes
+        // Node 0 sends sync ack to all other nodes and the current mode
         syncAck();
+        sendMode();
       } 
     }
   }
@@ -279,6 +353,24 @@ void carThrough(int coordinateToSend)
   Serial.println("Car through");
 }
 
+void sendMode()
+{
+  for(int i = 1; i < highestCoordinate + 1; i++)
+  {
+    Wire.beginTransmission(i);
+    // Destination
+    Wire.write(i << 4);
+    // Source
+    Wire.write(coordinate << 4);
+    // Event (MODE)
+    Wire.write(0x02);
+    // Data (ACK)
+    Wire.write(activeMode);
+    Wire.endTransmission();
+    Serial.println("Mode sent");
+  }
+}
+
 // When in sync send a Done to coordinate 0
 void syncDone()
 {
@@ -328,73 +420,15 @@ long unsigned int parseTime()
   return parsedData;
 }
 
-// Data Handler (round robin)
-void dataHandler()
-{
-  int received;
-  int destination;
-  int source;
-  int event;
-  // loop through all but the last
-  if (Wire.available())
-  {
-    received = Wire.read();
-    destination = received >> 4;
-  }
-
-  if (Wire.available())
-  {
-    received = Wire.read();
-    source = received >> 4;
-  }
-
-  if (Wire.available())
-  {
-    received = Wire.read();
-    event = received;
-  }
-
-  //Serial.print("Received event: ");
-  //Serial.println(event);
-
-  // Round robin with interrupts
-  switch (event)
-  {
-    // Clock
-    case 0:
-      //clock = true;
-      clock(destination, source);
-      break;
-    // Car
-    case 1:
-      car();
-      break;
-    case 2:
-    // Mode
-      
-      break;
-    case 3:
-    // Status
-      
-      break;
-    case 4:
-    // Sync
-      sync();
-      break;
-
-    default:
-      break;
-  }
-  dataReceived = false;
-}
-
 // Other Functions
 void loop() 
 {
   if (dataReceived)
     dataHandler();
 
-  readCars();
+  if (activeMode != 0)
+    readCars();
+
   for (int i = 0; i < 2; i++) 
   {
     if (((millis() / 100) + deltaClock) > timeZero[i] + 10) 
@@ -407,7 +441,8 @@ void loop()
           {
             handleYellow(i);
             timeZero[i] = millis() / 100 + deltaClock;
-            calculateDutyCycle(i);
+            if(!activeMode == 0)
+              calculateDutyCycle(i);
             printStatus(i);
             
             cars[i][0] = 0;
@@ -540,37 +575,39 @@ void readCars(){
     if ((lightMapped[i][0] < 125) && !carInJunction[i][0]) 
     {
       cars[i][0]++;
-
-      // Speed related
-      if (head[i] < tail[i])
-      {
-        // Verifies timestamp in self buffer to see if the speed limit was exceded
-        if (circularBuffer[i][head[i]] + maxSpeed > (millis() / 100) + deltaClock)
-        {
-          stop(i);
-        }
-        // Head (read pointer) increaments
-        head[i] = (head[i] + 1) % 32;
-      }
-      
-      // First junction writes in the second junction
-      if (i == 0)
-      {
-        circularBuffer[i + 1][tail[i + 1]] = (millis() / 100) + deltaClock;
-        tail[i + 1] = (tail[i + 1] + 1) % 32;
-      }
-
-      // Second junction sends to next controller
-      else if (i == 1)
-      {
-        // send to the next arduino
-        if (coordinate != highestCoordinate)
-        {
-          carThrough(coordinate + 1);
-        }
-      }
-
       carInJunction[i][0] = true;
+
+      if (activeMode == 2)
+      {
+        // Speed related
+        if (head[i] < tail[i])
+        {
+          // Verifies timestamp in self buffer to see if the speed limit was exceded
+          if (circularBuffer[i][head[i]] + maxSpeed > (millis() / 100) + deltaClock)
+          {
+            stop(i);
+          }
+          // Head (read pointer) increaments
+          head[i] = (head[i] + 1) % 32;
+        }
+        
+        // First junction writes in the second junction
+        if (i == 0)
+        {
+          circularBuffer[i + 1][tail[i + 1]] = (millis() / 100) + deltaClock;
+          tail[i + 1] = (tail[i + 1] + 1) % 32;
+        }
+
+        // Second junction sends to next controller
+        else if (i == 1)
+        {
+          // send to the next arduino
+          if (coordinate != highestCoordinate)
+          {
+            carThrough(coordinate + 1);
+          }
+        }
+      }
     }
     else if (lightMapped[i][0] >= 190)
       carInJunction[i][0] = false;
