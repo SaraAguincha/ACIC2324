@@ -83,8 +83,13 @@ void setup()
 // this function is registered as an event, see setup()
 void receiveEvent(int howMany)
 {
+  // ISR should not have Wire library calls in this system
+  // These calls are too slow and cause trouble
+  // The use of a data received flag makes it possible to handle
+  // Outside of the ISR
   dataReceived = true;
 }
+
 //
 // Receiving functions
 //
@@ -99,7 +104,6 @@ void clock(int destination, int source)
   long int myCock = millis() / 100 + deltaClock;
   Serial.println(myCock);*/
   
-
   long unsigned int receivedClock = 0;
   long unsigned int timeNow = 0;
   long int condition = 0;
@@ -126,63 +130,45 @@ void clock(int destination, int source)
     eastClock = receivedClock;
   }
 
-  
   /*Serial.println(eastClock);
   Serial.println(westClock);
   Serial.println(" ");*/
 
   //Serial.println(deltaClock);
-
+  
+  timeNow = millis() / 100;
+  long unsigned int myNewClock = 0;
   if (eastClock && westClock)
   {
-    timeNow = millis() / 100;
-    long unsigned int myNewClock = ((timeNow + deltaClock) + eastClock + westClock) / 3;
-    condition = (timeNow + deltaClock) - myNewClock;
-    condition = abs(condition);
-    if (condition < error)
-    {
-      stopSync = true;
-      eastClock = 0;
-      westClock = 0;
-      Serial.println("Done!!");
-      sendDone();
-      return;
-    }
-    deltaClock = myNewClock - timeNow;
+    myNewClock = ((timeNow + deltaClock) + eastClock + westClock) / 3;
   }
   else if (coordinate == 0 && eastClock)
   {
-    timeNow = millis() / 100;
-    long unsigned int myNewClock = ((timeNow + deltaClock) + eastClock) / 2;
-    condition = (timeNow + deltaClock) - myNewClock;
-    condition = abs(condition);
-    if (condition < error)
-    {
-      stopSync = true;
-      eastClock = 0;
-      doneCounter++;
-      Serial.println("Done!!");
-      return;
-    }
-    deltaClock = myNewClock - timeNow;
+    myNewClock = ((timeNow + deltaClock) + eastClock) / 2;
   }
   else if (coordinate == highestCoordinate && westClock)
   {
-    timeNow = millis() / 100;
-    long unsigned int myNewClock = ((timeNow + deltaClock) + westClock) / 2;
-    
-    condition = (timeNow + deltaClock) - myNewClock;
-    condition = abs(condition);
-    if (condition < error)
-    {
-      stopSync = true;
-      westClock = 0;
-      Serial.println("Done!!");
-      sendDone();
-      return;
-    }
-    deltaClock = myNewClock - timeNow;
+    myNewClock = ((timeNow + deltaClock) + westClock) / 2;
   }
+  condition = (timeNow + deltaClock) - myNewClock;
+  condition = abs(condition);
+  if (condition < error)
+  {
+    stopSync = true;
+    eastClock = 0;
+    westClock = 0;
+    Serial.println("Done!!");
+    if (coordinate == 0)
+    {
+      doneCounter++;
+    }
+    else
+    {
+      syncDone();
+    }
+    return;
+  }
+  deltaClock = myNewClock - timeNow;
 }
 
 // Send Sync Done, and Receive Sync Ack
@@ -205,19 +191,8 @@ void sync()
       if (doneCounter == highestCoordinate + 1)
       {
         synchronized = true;
-        for(int i = 0; i < highestCoordinate + 1; i++)
-        {
-          Wire.beginTransmission(i);
-          // Destination
-          Wire.write(i << 4);
-          // Source
-          Wire.write(coordinate << 4);
-          // Event
-          Wire.write(0x04);
-          // Data
-          Wire.write(0x02);
-          Wire.endTransmission();
-        }
+        // Node 0 sends sync ack to all other nodes
+        syncAck();
       } 
     }
   }
@@ -228,35 +203,20 @@ void sync()
   }
 }
 
-// When in sync send a Done to coordinate 0
-void sendDone()
-{
-  //Serial.println("ANTES");
-  Wire.beginTransmission(0);
-  // Destination
-  Wire.write(0x00);
-  // Source
-  Wire.write(coordinate << 4);
-  // Event
-  Wire.write(0x04);
-  // Data
-  Wire.write(0x01);
-  Wire.endTransmission();
-  Serial.println("DEPOIS");
-}
-
 //
 // Sending functions
 //
 void clockSync()
 {
-  long unsigned int data;
   long int myClock = 0;
+  long unsigned int timeNow;
   while (!synchronized)
   {    
-    if (dataReceived)
+    timeNow = millis();
+    while (millis() < timeNow + 100)
     {
-      dataHandler();
+      if (dataReceived)
+        dataHandler();
     }
     //Serial.print("my clock: ");
     //myClock = (millis() / 100) + deltaClock;
@@ -273,12 +233,9 @@ void clockSync()
       // Event
       int event = 0x00;
       Wire.write(event);
-      // Data 
-      data = (millis() / 100) + deltaClock;
-      for (int i = 3; i >= 0; i--)
-      {
-        Wire.write(data >> 8 * i);
-      }
+      // Data (TIME - 32 bit integer)
+      long unsigned int data = (millis() / 100) + deltaClock;
+      Wire.write(parseTime());
       Wire.endTransmission();
     }
     if (coordinate != highestCoordinate)
@@ -290,21 +247,82 @@ void clockSync()
       // Source
       int source = coordinate << 4;
       Wire.write(source);
-      // Event
+      // Event (CLOCK)
       int event = 0x00;
       Wire.write(event);
-      // Data 
-      data = (millis() / 100) + deltaClock;
-      for (int i = 3; i >= 0; i--)
-      {
-        Wire.write(data >> 8 * i);
-      }
+      // Data (TIME - 32 bit integer)
+      Wire.write(parseTime());
       Wire.endTransmission();
     }
-    delay(100);
   }
 }
 
+void carThrough(int coordinateToSend)
+{
+  Wire.beginTransmission(coordinateToSend);
+  // Addressing block
+  int address = coordinateToSend << 4;
+  Wire.write(address);
+  // Source
+  int source = coordinate << 4;
+  Wire.write(source);
+  // Event (CAR)
+  Wire.write(0x01);
+  // Data (TIME - 32 bit integer)
+  Wire.write(parseTime());
+  Wire.endTransmission();
+}
+
+// When in sync send a Done to coordinate 0
+void syncDone()
+{
+  //Serial.println("ANTES");
+  Wire.beginTransmission(0);
+  // Destination
+  Wire.write(0x00);
+  // Source
+  Wire.write(coordinate << 4);
+  // Event (SYNC)
+  Wire.write(0x04);
+  // Data (DONE)
+  Wire.write(0x01);
+  Wire.endTransmission();
+  Serial.println("Sync Done sent");
+}
+
+void syncAck()
+{
+  for(int i = 1; i < highestCoordinate + 1; i++)
+  {
+    Wire.beginTransmission(i);
+    // Destination
+    Wire.write(i << 4);
+    // Source
+    Wire.write(coordinate << 4);
+    // Event (SYNC)
+    Wire.write(0x04);
+    // Data (ACK)
+    Wire.write(0x02);
+    Wire.endTransmission();
+    Serial.println("Sync Ack sent");
+  }
+}
+
+// This function assumes that the caller is in 
+// the middle of writting a transmission
+long unsigned int parseTime()
+{
+  // Data (TIME - 32 bit integer)
+  long unsigned int data = (millis() / 100) + deltaClock;
+  long unsigned int parsedData = 0;
+  for (int i = 3; i >= 0; i--)
+  {
+    parsedData = parsedData + data >> 8 * i;
+  }
+  return parsedData;
+}
+
+// Data Handler (round robin)
 void dataHandler()
 {
   int received;
@@ -361,6 +379,7 @@ void dataHandler()
     default:
       break;
   }
+  dataReceived = false;
 }
 
 // Other Functions
@@ -449,7 +468,6 @@ void initialState () {
       blink = !blink;
     }
   }
-
 
   for (int i = 0; i < 2; i++) 
   {
