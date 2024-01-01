@@ -3,7 +3,7 @@
 // User variables
 int coordinate = 1;
 int allCoordinates[2] = {0, 1};
-int activeMode = 0;
+int activeMode = 2;
 // End of user variables
 
 // Coordinates
@@ -36,7 +36,7 @@ int cars[2][2] = {{0, 0}, {0, 0}};
 bool carInJunction[2][2] = {{false, false}, {false, false}};
 
 // Speeding stuff
-const unsigned int maxSpeed = 4000;
+const unsigned int maxSpeed = 40;
 
 // Clock
 long int deltaClock = 0;
