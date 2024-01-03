@@ -2,7 +2,7 @@
 
 // User variables
 int coordinate = 1;
-int allCoordinates[2] = {0, 1};
+int allCoordinates[4] = {0, 1, 2, 3};
 int activeMode = 2;
 // End of user variables
 
@@ -105,13 +105,13 @@ void dataHandler()
   if (Wire.available())
   {
     received = Wire.read();
-    destination = received >> 4;
+    destination = received >> 5;
   }
 
   if (Wire.available())
   {
     received = Wire.read();
-    source = received >> 4;
+    source = received >> 5;
   }
 
   if (Wire.available())
@@ -204,9 +204,9 @@ void clock(int destination, int source)
     stopSync = true;
     eastClock = 0;
     westClock = 0;
-    Serial.println("Done!!");
     if (coordinate == 0)
     {
+      Serial.println("Sync Done received");
       doneCounter++;
     }
     else
@@ -291,39 +291,46 @@ void clockSync()
       if (dataReceived)
         dataHandler();
     }
-    Serial.print("my clock: ");
-    myClock = (millis() / 100) + deltaClock;
-    Serial.println(myClock);
+    //Serial.print("my clock: ");
+    //myClock = (millis() / 100) + deltaClock;
+    //Serial.println(myClock);
     if (coordinate != 0)
     {
       Wire.beginTransmission(coordinate - 1);
       // Addressing block
-      int address = (coordinate - 1) << 4;
+      int address = (coordinate - 1) << 5;
       Wire.write(address);
       // Source
-      int source = coordinate << 4;
+      int source = ((coordinate << 1) + 0x01) << 4;
       Wire.write(source);
       // Event
       int event = 0x00;
       Wire.write(event);
       // Data (TIME - 32 bit integer)
-      Wire.write(parseTime());
+      long unsigned int data = (millis() / 100) + deltaClock;
+      char d[4];
+      memcpy(d, &data, 4);
+      Wire.write(d, 4);
+      //Wire.write(parseTime());
       Wire.endTransmission();
     }
     if (coordinate != highestCoordinate)
     {
       Wire.beginTransmission(coordinate + 1);
       // Addressing block
-      int address = (coordinate + 1) << 4;
+      int address = (coordinate + 1) << 5;
       Wire.write(address);
       // Source
-      int source = coordinate << 4;
+      int source = ((coordinate << 1) + 0x01) << 4;
       Wire.write(source);
       // Event (CLOCK)
       int event = 0x00;
       Wire.write(event);
       // Data (TIME - 32 bit integer)
-      Wire.write(parseTime());
+      long unsigned int data = (millis() / 100) + deltaClock;
+      char d[4];
+      memcpy(d, &data, 4);
+      Wire.write(d, 4);
       Wire.endTransmission();
     }
 
@@ -342,15 +349,18 @@ void carThrough(int coordinateToSend)
 {
   Wire.beginTransmission(coordinateToSend);
   // Addressing block
-  int address = coordinateToSend << 4;
+  int address = coordinateToSend << 5;
   Wire.write(address);
   // Source
-  int source = coordinate << 4;
+  int source = ((coordinate << 1) + 0x01) << 4;
   Wire.write(source);
   // Event (CAR)
   Wire.write(0x01);
   // Data (TIME - 32 bit integer)
-  Wire.write(parseTime());
+  long unsigned int data = (millis() / 100) + deltaClock;
+  char d[4];
+  memcpy(d, &data, 4);
+  Wire.write(d, 4);
   Wire.endTransmission();
   Serial.println("Car through");
 }
@@ -361,9 +371,9 @@ void sendMode()
   {
     Wire.beginTransmission(i);
     // Destination
-    Wire.write(i << 4);
+    Wire.write(i << 5);
     // Source
-    Wire.write(coordinate << 4);
+    Wire.write((coordinate << 1) + 0x01) << 4;
     // Event (MODE)
     Wire.write(0x02);
     // Data (ACK)
@@ -381,7 +391,7 @@ void syncDone()
   // Destination
   Wire.write(0x00);
   // Source
-  Wire.write(coordinate << 4);
+  Wire.write(((coordinate << 1) + 0x01) << 4);
   // Event (SYNC)
   Wire.write(0x04);
   // Data (DONE)
@@ -396,9 +406,9 @@ void syncAck()
   {
     Wire.beginTransmission(i);
     // Destination
-    Wire.write(i << 4);
+    Wire.write(i << 5);
     // Source
-    Wire.write(coordinate << 4);
+    Wire.write(((coordinate << 1) + 0x01) << 4);
     // Event (SYNC)
     Wire.write(0x04);
     // Data (ACK)
@@ -413,13 +423,18 @@ void syncAck()
 long unsigned int parseTime()
 {
   // Data (TIME - 32 bit integer)
+  /* 
+      char d[4];
+      memcpy(d, &data, 4);
+      Wire.write(d, 4);
+  */
   long unsigned int data = (millis() / 100) + deltaClock;
   long unsigned int parsedData = 0;
   for (int i = 3; i >= 0; i--)
   {
     parsedData = parsedData + data >> 8 * i;
   }
-  return parsedData;
+  return data;
 }
 
 // Other Functions
